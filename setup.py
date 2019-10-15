@@ -15,18 +15,12 @@ setup(
     version=__version__,
     url="https://github.com/syllogio/syllogio-ml",
     license="MIT",
-    author="Peter Sieg",
+    author="Peter Sieg <chasingmaxwell@gmail.com>, Patrick Coffey <patrickcoffey48@gmail.com>",
     author_email="chasingmaxwell@gmail.com",
-    description="Identify proposition dependency trees using natural language processing and machine learning.",
+    description="Do artificially intelligent things with propositions in an argument.",
     packages=find_packages(exclude=["tests"]),
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     install_requires=read("requirements.txt").splitlines(),
     zip_safe=False,
-    entry_points={
-        "console_scripts": [
-            "syllogio-ml = ml.__main__:main",
-            "sylml = ml.__main__:main",
-        ]
-    },
 )
