@@ -3,84 +3,98 @@ from tensorflow import keras
 import spacy
 import numpy as np
 import itertools
+import csv
 
 # Configuration.
 spacy_model_name = "en_core_web_sm"
-
-# Load traning data
-# @TODO: parse @chasingmaxwell's csv here, probably put this in some external file heh.
-train_syllogisms = [
-    ["All men are mortal", "Socrates is mortal", "Socrates is a man"],
-    ["China has a GDP", "All countries have a GDP", "China is a country"],
-    [
-        "Garbage consists of smelly, rotting material",
-        "Humans do not like the smell of rotting material",
-        "Garbage smells terrible to humans",
-    ],
-]
-test_syllogisms = [
-    ["Mammals have warm blood", "Humans are mammals", "Humans have warm blood"],
-    [
-        "Snakes are reptiles",
-        "Snakes have cold blood",
-        "If a lifeform has cold blood, it is a reptile",
-    ],
-    [
-        "Foundational hedonists claim that pleasure is the highest good",
-        "Hedonists argue that pleasure and suffering are the only two components of well-being",
-        "Hedonism is an overly-simplistic way to view the world",
-    ],
-]
-train_expectations = [[1, -1, 1], [-1, 1, 1], [1, 1, -1]]
+training_data_path = "syllogio_ml/training_data.csv"
+max_syllogism_proposition_count = 4
+max_proposition_token_data_count = 2000
 
 # Initialize spacy models on training data.
 nlp = spacy.load(spacy_model_name)
 
-# Helpers.
+
+# Flattens an input array.
 def flatten(input):
     return list(itertools.chain(*input))
 
 
+# Returns true if given "true" and false if given "false".
 def bool_to_int(bool):
-    int(bool == "true")
+    return int(bool == "true")
+
+
+# Pads a given list so that it's length is len(max).
+def pad(input, max, padWith=0):
+    return input + [padWith] * (max - len(input))
+
+
+# Fetch training data and parse.
+def get_train_data_list(filepath):
+    data = []
+    labels = []
+    with open(filepath, "r") as csv_file:
+        reader = csv.reader(csv_file, delimiter="|")
+        for row in reader:
+            [permutations, expectations] = create_permutations_for_syllogism(
+                row, row[0]
+            )
+            data.append(permutations)
+            labels.append(expectations)
+
+    return tuple([flatten(data), flatten(labels)])
+
+
+# Create all permutations for a given input.
+def create_permutations_for_syllogism(propositions, conclusion):
+    permutations = []
+    labels = []
+    propLen = len(propositions)
+    for comb in itertools.permutations(propositions, propLen):
+        conclusionIndex = comb.index(conclusion)
+        answer = [
+            "-1" if i == conclusionIndex else str(conclusionIndex)
+            for i in range(propLen)
+        ]
+        permutations.append(list(comb))
+        labels.append(answer)
+
+    return [permutations, labels]
 
 
 def token_to_train_data(token):
-    return np.array(
-        [
-            token.i,
-            token.dep,
-            token.pos,
-            token.orth,
-            token.lemma,
-            token.norm,
-            token.tag,
-            bool_to_int(token.is_alpha),
-            bool_to_int(token.is_ascii),
-            bool_to_int(token.is_bracket),
-            bool_to_int(token.is_currency),
-            bool_to_int(token.is_digit),
-            bool_to_int(token.is_left_punct),
-            bool_to_int(token.is_right_punct),
-            bool_to_int(token.is_quote),
-            bool_to_int(token.is_quote),
-            bool_to_int(token.is_sent_start),
-            bool_to_int(token.is_space),
-            bool_to_int(token.is_stop),
-            bool_to_int(token.is_stop),
-        ],
-        dtype=float,
-    )
+    return [
+        token.i,
+        token.dep,
+        token.pos,
+        token.orth,
+        token.lemma,
+        token.norm,
+        token.tag,
+        bool_to_int(token.is_alpha),
+        bool_to_int(token.is_ascii),
+        bool_to_int(token.is_bracket),
+        bool_to_int(token.is_currency),
+        bool_to_int(token.is_digit),
+        bool_to_int(token.is_left_punct),
+        bool_to_int(token.is_right_punct),
+        bool_to_int(token.is_quote),
+        bool_to_int(token.is_quote),
+        bool_to_int(token.is_sent_start),
+        bool_to_int(token.is_space),
+        bool_to_int(token.is_stop),
+        bool_to_int(token.is_stop),
+    ]
 
 
 def proposition_to_train_data(proposition):
     proposition_data = []
     for token in nlp(proposition):
-        proposition_data.append(
-            token_to_train_data(token) + token_to_train_data(token.head)
-        )
+        token_data = token_to_train_data(token) + token_to_train_data(token.head)
+        proposition_data.append(token_data)
 
-    return flatten(proposition_data)
+    return pad(flatten(proposition_data), max_proposition_token_data_count)
 
 
 def format_input_data(syllogisms):
@@ -89,26 +103,56 @@ def format_input_data(syllogisms):
         sdata = []
         for proposition in syllogism:
             sdata.append(proposition_to_train_data(proposition))
-        data.append(sdata)
-    return np.array(data)
+        data.append(
+            pad(
+                sdata,
+                max_syllogism_proposition_count,
+                pad([], max_proposition_token_data_count),
+            )
+        )
+
+    return tensorflow.convert_to_tensor(np.asarray(data, dtype=float), dtype=float)
 
 
+def format_input_labels(labels):
+    data = []
+    for label in labels:
+        data.append(pad([float(i) for i in label], max_syllogism_proposition_count))
+    return tensorflow.convert_to_tensor(np.asarray(data, dtype=float), dtype=float)
+
+
+[train_syllogisms, train_labels] = get_train_data_list(training_data_path)
+
+test_syllogisms = [
+    ["All men are mortal", "Socrates is mortal", "Socrates is a man"],
+    ["China has a GDP", "All countries have a GDP", "China is a country"],
+    [
+        "Garbage consists of smelly, rotting material",
+        "Humans do not like the smell of rotting material",
+        "Garbage smells terrible to humans",
+    ],
+]
 train_data = format_input_data(train_syllogisms)
 test_data = format_input_data(test_syllogisms)
+train_expectations = format_input_labels(train_labels)
 
 model = keras.Sequential(
     [
-        keras.layers.Dense(1500, activation="relu"),
-        keras.layers.Dense(3, activation="relu"),
+        keras.layers.Flatten(input_shape=(max_syllogism_proposition_count, 2000)),
+        keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
     ]
 )
 
-model.compile(
-    optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"]
-)
+model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
 
 model.fit(train_data, train_expectations, epochs=3)
 
-prediction = model.predict(test_data)
+predictions = model.predict(test_data)
 
-print(prediction)
+for index, prediction in enumerate(predictions):
+    predictionIndex = np.argmin(prediction)
+    if predictionIndex >= len(test_syllogisms[index]):
+        print("Well, this prediction was way off base")
+    else:
+        print(test_syllogisms[index][predictionIndex])
+
