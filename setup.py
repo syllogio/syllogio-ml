@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-from ml import __version__
+from syllogio_ml import __version__
 import os
 import io
 

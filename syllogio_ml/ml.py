@@ -4,11 +4,13 @@ import spacy
 import numpy as np
 import itertools
 import csv
+import pprint
+pp = pprint.PrettyPrinter(indent=2)
 
 # Configuration.
 spacy_model_name = "en_core_web_sm"
 training_data_path = "syllogio_ml/training_data.csv"
-max_syllogism_proposition_count = 4
+max_syllogism_proposition_count = 20
 max_proposition_token_data_count = 2000
 
 # Initialize spacy models on training data.
@@ -54,7 +56,7 @@ def create_permutations_for_syllogism(propositions, conclusion):
     for comb in itertools.permutations(propositions, propLen):
         conclusionIndex = comb.index(conclusion)
         answer = [
-            "-1" if i == conclusionIndex else str(conclusionIndex)
+            1 if i == conclusionIndex else 0
             for i in range(propLen)
         ]
         permutations.append(list(comb))
@@ -122,14 +124,15 @@ def format_input_labels(labels):
 
 
 [train_syllogisms, train_labels] = get_train_data_list(training_data_path)
+pp.pprint([train_syllogisms, train_labels])
 
 test_syllogisms = [
     ["All men are mortal", "Socrates is mortal", "Socrates is a man"],
     ["China has a GDP", "All countries have a GDP", "China is a country"],
     [
-        "Garbage consists of smelly, rotting material",
-        "Humans do not like the smell of rotting material",
-        "Garbage smells terrible to humans",
+        "Garbage is rotting material",
+        "Humans do not like rotting material",
+        "Humans do not like garbage",
     ],
 ]
 train_data = format_input_data(train_syllogisms)
@@ -138,19 +141,24 @@ train_expectations = format_input_labels(train_labels)
 
 model = keras.Sequential(
     [
-        keras.layers.Flatten(input_shape=(max_syllogism_proposition_count, 2000)),
+        keras.layers.Flatten(input_shape=(max_syllogism_proposition_count, max_proposition_token_data_count)),
+        keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
+        keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
+        keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
+        keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
         keras.layers.Dense(max_syllogism_proposition_count, activation="relu"),
     ]
 )
 
-model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
+model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["categorical_accuracy"])
 
-model.fit(train_data, train_expectations, epochs=3)
+model.fit(train_data, train_expectations, epochs=100)
 
 predictions = model.predict(test_data)
 
 for index, prediction in enumerate(predictions):
-    predictionIndex = np.argmin(prediction)
+    pp.pprint(prediction)
+    predictionIndex = np.argmax(prediction)
     if predictionIndex >= len(test_syllogisms[index]):
         print("Well, this prediction was way off base")
     else:
